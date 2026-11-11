@@ -6,36 +6,45 @@
 <title>Tab Lock – INFO 463</title>
 <style>
   /* basic page */
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
   body {
     margin: 0;
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: #dfe3e8;
+    background: #fff;
     color: #222;
-  }
-  .task {
-    max-width: 980px;
-    margin: 22px auto 14px;
-    padding: 0 16px;
-    font-size: 15px;
-  }
-  .task small { color: #666; }
-  .task p { margin: 6px 0 0; line-height: 1.45; }
-  .task button {
-    float: right;
-    font: inherit; font-size: 13px;
-    padding: 4px 10px;
-    border: 1px solid #aaa; border-radius: 4px;
-    background: #fff; cursor: pointer;
+    overflow: hidden;
   }
 
-  /* browser window */
+  /* task popup shown before starting */
+  .intro {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(0,0,0,.45);
+    display: grid; place-items: center;
+  }
+  .intro .box {
+    background: #fff; border-radius: 8px;
+    width: min(460px, 90vw);
+    padding: 22px 26px;
+    font-size: 15px; line-height: 1.5;
+    box-shadow: 0 8px 30px rgba(0,0,0,.3);
+  }
+  .intro small { color: #777; }
+  .intro p { margin: 8px 0; }
+  .intro button {
+    margin-top: 8px;
+    font: inherit; font-size: 14px;
+    padding: 7px 18px;
+    border: 0; border-radius: 4px;
+    background: #1a73e8; color: #fff; cursor: pointer;
+  }
+
+  /* browser window = whole screen */
   .browser {
-    max-width: 980px;
-    margin: 0 auto 40px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
     background: #fff;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0,0,0,.18);
   }
   .tabbar {
     display: flex;
@@ -54,7 +63,7 @@
 
   .tab {
     display: flex; align-items: center; gap: 6px;
-    width: 200px; height: 34px;
+    width: 240px; min-width: 0; flex-shrink: 1; height: 34px;
     padding: 0 6px 0 12px;
     box-sizing: border-box;
     border-radius: 8px 8px 0 0;
@@ -78,6 +87,10 @@
   .tab .lk { color: #b26a00; cursor: help; }
   .tab .x svg, .tab .lk svg { width: 12px; height: 12px; }
   .tab.locked { box-shadow: inset 0 -2px 0 #e0a030; }
+  .tab.shake { animation: shake .35s; background: #fdecc8; }
+  @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .intro kbd { border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; font: inherit; font-size: 12px; background: #f6f6f6; }
+  .intro ul { margin: 4px 0 0; padding-left: 18px; color: #555; font-size: 13px; }
 
   .toolbar {
     display: flex; align-items: center; gap: 10px;
@@ -95,7 +108,7 @@
   }
   .url span { color: #999; }
 
-  .content { height: 430px; position: relative; overflow: hidden; }
+  .content { flex: 1; min-height: 0; position: relative; overflow: hidden; }
 
   /* right click menu */
   .ctx {
@@ -114,6 +127,7 @@
   }
   .ctx button:hover:not(:disabled) { background: #e8f0fe; }
   .ctx button:disabled { color: #aaa; cursor: default; }
+  .ctx button kbd { float: right; color: #888; font: inherit; font-size: 12px; margin-left: 18px; }
   .ctx hr { border: 0; border-top: 1px solid #eee; margin: 4px 0; }
 
   .toast {
@@ -145,7 +159,7 @@
   .slides .thumb { height: 58px; background: #fff; border: 1px solid #ccc; margin-bottom: 10px; font-size: 9px; padding: 5px; box-sizing: border-box; color: #555; }
   .slides .thumb.on { border: 2px solid #1a73e8; }
   .slides .stage { flex: 1; display: grid; place-items: center; }
-  .slides .slide { width: 82%; aspect-ratio: 16/9; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); padding: 30px 36px; box-sizing: border-box; position: relative; }
+  .slides .slide { width: min(82%, calc((100vh - 150px) * 1.6)); aspect-ratio: 16/9; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); padding: 30px 36px; box-sizing: border-box; position: relative; }
   .slides .slide h1 { margin: 0; font-size: 30px; font-weight: 600; color: #1f3b5c; }
   .slides .slide p { margin: 6px 0 0; color: #555; }
   .slides .slide svg { position: absolute; right: 30px; bottom: 26px; width: 45%; }
@@ -157,13 +171,23 @@
   .doc ul { padding-left: 18px; }
 
   /* facilitator panel, only shows with ?test in the url */
-  .log { max-width: 980px; margin: -24px auto 40px; padding: 0 16px; font-size: 13px; }
-  .log .head { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; }
-  .log .head b { margin-right: auto; }
-  .log button { font: inherit; padding: 3px 9px; border: 1px solid #aaa; border-radius: 4px; background: #fff; cursor: pointer; }
-  .log pre { background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; height: 150px; overflow: auto; margin: 0; font-size: 12px; }
+  .log {
+    position: fixed; right: 12px; bottom: 12px; z-index: 15;
+    width: 360px;
+    background: rgba(255,255,255,.97);
+    border: 1px solid #bbb; border-radius: 6px;
+    box-shadow: 0 3px 12px rgba(0,0,0,.2);
+    font-size: 12px;
+  }
+  .log .head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 8px; }
+  .log #stats { order: 5; width: 100%; color: #555; }
+  .log .head b { margin-right: auto; white-space: nowrap; }
+  .log button { font: inherit; padding: 2px 8px; border: 1px solid #aaa; border-radius: 4px; background: #fff; cursor: pointer; }
+  .log pre { border-top: 1px solid #ddd; padding: 6px 8px; height: 140px; overflow: auto; margin: 0; font-size: 11px; white-space: pre-wrap; }
+  .log.small pre, .log.small #stats, .log.small #copyLog, .log.small #resetBtn { display: none; }
 
   .blank { height: 100%; display: grid; place-items: center; color: #777; font-size: 14px; text-align: center; }
+  .blank button { margin-top: 10px; font: inherit; padding: 5px 14px; border: 1px solid #aaa; border-radius: 4px; background: #fff; cursor: pointer; }
 
   @media (max-width: 640px) {
     .tab { width: auto; flex: 1; }
@@ -174,11 +198,21 @@
 </head>
 <body>
 
-<div class="task">
-  <button id="reset">Reset</button>
-  <small>INFO 463 · Tab lock prototype</small>
-  <p><b>Task:</b> You're in a meeting with your project partner. Look through your slides and notes without losing the meeting tab. When you're done, close the meeting.<br>
-  <small id="tip">Tip: right-click a tab to lock it.</small></p>
+<div class="intro" id="intro">
+  <div class="box">
+    <small>INFO 463 · Tab lock prototype</small>
+    <p><b>Task:</b> You're in a meeting with your project partner. Look through your slides and notes without losing the meeting tab. When you're done, close the meeting.</p>
+    <div id="tip">
+      <small>Keyboard shortcuts:</small>
+      <ul>
+        <li><kbd>&larr;</kbd> <kbd>&rarr;</kbd> switch tabs</li>
+        <li><kbd>Shift</kbd> + <kbd>L</kbd> lock / unlock the current tab</li>
+        <li><kbd>Shift</kbd> + <kbd>W</kbd> close the current tab</li>
+      </ul>
+      <p><small>You can also right-click a tab.</small></p>
+    </div>
+    <button id="startBtn">Start</button>
+  </div>
 </div>
 
 <div class="browser">
@@ -197,14 +231,16 @@
     <b>Facilitator log</b>
     <span id="stats"></span>
     <button id="copyLog">Copy</button>
+    <button id="resetBtn">Reset</button>
+    <button id="hideLog" title="Collapse">–</button>
   </div>
   <pre id="logText"></pre>
 </div>
 
 <div class="ctx" id="ctx" hidden>
-  <button id="ctxLock">Lock tab</button>
+  <button id="ctxLock">Lock tab <kbd>Shift+L</kbd></button>
   <hr>
-  <button id="ctxClose">Close tab</button>
+  <button id="ctxClose">Close tab <kbd>Shift+W</kbd></button>
 </div>
 
 <!-- page contents -->
@@ -289,7 +325,9 @@ function log(msg) {
   if (!testing) return;
   $("logText").textContent = lines.join("\n");
   $("logText").scrollTop = 1e9;
-  $("stats").textContent = "blocked closes: " + blockedCloses + (done ? " · task done" : "");
+  const keys = lines.filter(l => l.endsWith("(key)")).length;
+  const clicks = lines.filter(l => l.endsWith("(mouse)") || l.endsWith("(menu)")).length;
+  $("stats").textContent = "keys " + keys + " · mouse " + clicks + " · blocked " + blockedCloses + (done ? " · done" : "");
 }
 
 function checkDone() {
@@ -343,7 +381,7 @@ function render() {
     content.appendChild($("page-" + activeTab).content.cloneNode(true));
   } else {
     $("url").innerHTML = "";
-    content.innerHTML = '<div class="blank">No tabs open.<br>Press Reset to try again.</div>';
+    content.innerHTML = '<div class="blank"><div>No tabs open.<br><button onclick="showIntro()">Start over</button></div></div>';
   }
   content.appendChild(toast);
 }
@@ -356,11 +394,13 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-function closeTab(id) {
+function closeTab(id, how) {
   if (lockedTabs.has(id)) {
     blockedCloses++;
-    log("tried to close " + id + " (locked, blocked)");
-    showToast(TABS[id].title + " is locked. Unlock it first.");
+    log("tried to close " + id + " – blocked, tab is locked (" + how + ")");
+    showToast(TABS[id].title + " is locked. Press Shift+L to unlock it first.");
+    const el = document.querySelector('.tab[data-id="' + id + '"]');
+    if (el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
     return;
   }
   const i = openTabs.indexOf(id);
@@ -369,21 +409,29 @@ function closeTab(id) {
     activeTab = openTabs[i] || openTabs[i - 1] || null;
     if (activeTab) visited.add(activeTab);
   }
-  log("closed " + id);
+  log("closed " + id + " (" + how + ")");
   render();
   checkDone();
 }
 
-function toggleLock(id) {
+function toggleLock(id, how) {
   if (lockedTabs.has(id)) {
     lockedTabs.delete(id);
-    log("unlocked " + id);
+    log("unlocked " + id + " (" + how + ")");
     showToast("Tab unlocked");
   } else {
     lockedTabs.add(id);
-    log("locked " + id);
+    log("locked " + id + " (" + how + ")");
     showToast("Tab locked – it can't be closed by accident");
   }
+  render();
+}
+
+function switchTo(id, how) {
+  if (id === activeTab) return;
+  activeTab = id;
+  visited.add(id);
+  log("switched to " + id + " (" + how + ")");
   render();
 }
 
@@ -393,20 +441,15 @@ $("tabbar").addEventListener("click", e => {
   if (!tab) return;
   const id = tab.dataset.id;
   const act = e.target.closest("[data-act]");
-  if (act && act.dataset.act === "close") { closeTab(id); return; }
-  if (act && act.dataset.act === "locked") { log("clicked lock icon on " + id); showToast("Locked. Right-click the tab to unlock."); return; }
-  if (id !== activeTab) {
-    activeTab = id;
-    visited.add(id);
-    log("switched to " + id);
-    render();
-  }
+  if (act && act.dataset.act === "close") { closeTab(id, "mouse"); return; }
+  if (act && act.dataset.act === "locked") { log("clicked lock icon on " + id); showToast("Locked. Press Shift+L or right-click to unlock."); return; }
+  switchTo(id, "mouse");
 });
 
 // middle click closes, like a real browser
 $("tabbar").addEventListener("auxclick", e => {
   const tab = e.target.closest(".tab");
-  if (tab && e.button === 1) closeTab(tab.dataset.id);
+  if (tab && e.button === 1) closeTab(tab.dataset.id, "mouse");
 });
 
 // right click menu
@@ -417,7 +460,7 @@ $("tabbar").addEventListener("contextmenu", e => {
   menuFor = tab.dataset.id;
   log("opened menu on " + menuFor);
   const locked = lockedTabs.has(menuFor);
-  $("ctxLock").textContent = locked ? "Unlock tab" : "Lock tab";
+  $("ctxLock").innerHTML = (locked ? "Unlock tab" : "Lock tab") + " <kbd>Shift+L</kbd>";
   $("ctxClose").disabled = locked;
   const menu = $("ctx");
   menu.hidden = false;
@@ -427,19 +470,44 @@ $("tabbar").addEventListener("contextmenu", e => {
 
 function hideMenu() { $("ctx").hidden = true; menuFor = null; }
 
-$("ctxLock").onclick = () => { const id = menuFor; hideMenu(); toggleLock(id); };
-$("ctxClose").onclick = () => { const id = menuFor; hideMenu(); closeTab(id); };
+$("ctxLock").onclick = () => { const id = menuFor; hideMenu(); toggleLock(id, "menu"); };
+$("ctxClose").onclick = () => { const id = menuFor; hideMenu(); closeTab(id, "menu"); };
 document.addEventListener("mousedown", e => { if (!$("ctx").contains(e.target)) hideMenu(); });
+// keyboard shortcuts
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") hideMenu();
+  if (e.key === "Escape") { hideMenu(); return; }
+  if (!$("intro").hidden || !activeTab) return;      // not while the task popup is up
+  if (e.ctrlKey || e.metaKey || e.altKey) return;    // leave real browser shortcuts alone
+  const i = openTabs.indexOf(activeTab);
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    e.preventDefault();
+    hideMenu();
+    const step = e.key === "ArrowRight" ? 1 : -1;
+    switchTo(openTabs[(i + step + openTabs.length) % openTabs.length], "key");
+  } else if (e.shiftKey && e.code === "KeyL") {
+    e.preventDefault();
+    hideMenu();
+    toggleLock(activeTab, "key");
+  } else if (e.shiftKey && e.code === "KeyW") {
+    e.preventDefault();
+    hideMenu();
+    closeTab(activeTab, "key");
+  }
 });
 
-$("reset").onclick = reset;
+// start popup
+function showIntro() { $("intro").hidden = false; }
+$("startBtn").onclick = () => { $("intro").hidden = true; reset(); };
 
 if (testing) {
   $("log").hidden = false;
   $("copyLog").onclick = () => {
     navigator.clipboard.writeText(lines.join("\n")).then(() => showToast("Log copied"));
+  };
+  $("resetBtn").onclick = showIntro;
+  $("hideLog").onclick = () => {
+    const small = $("log").classList.toggle("small");
+    $("hideLog").textContent = small ? "+" : "–";
   };
 }
 
