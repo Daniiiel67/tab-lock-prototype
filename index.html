@@ -186,6 +186,45 @@
   .log pre { border-top: 1px solid #ddd; padding: 6px 8px; height: 140px; overflow: auto; margin: 0; font-size: 11px; white-space: pre-wrap; }
   .log.small pre, .log.small #stats, .log.small #copyLog, .log.small #resetBtn { display: none; }
 
+  /* TabGuard: on-screen stand-in for the physical Bluetooth button */
+  .tg {
+    position: fixed; left: 18px; bottom: 18px; z-index: 12;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .tg .body {
+    position: relative;
+    width: 104px; height: 104px; border-radius: 26px;
+    background: linear-gradient(160deg, #3a3f47, #1f2328);
+    box-shadow: 0 8px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+    display: grid; place-items: center;
+    cursor: grab;
+  }
+  .tg .grip { position: absolute; top: 7px; left: 50%; transform: translateX(-50%); width: 26px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.18); }
+  .tg .led {
+    position: absolute; top: 12px; right: 13px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #4a4f57; box-shadow: inset 0 1px 2px rgba(0,0,0,.6);
+    transition: background .15s, box-shadow .15s;
+  }
+  .tg .led.on { background: #ffb02e; box-shadow: 0 0 8px 2px rgba(255,176,46,.8); }
+  .tg .press {
+    width: 62px; height: 62px; border-radius: 50%;
+    border: 0; padding: 0; cursor: pointer;
+    background: radial-gradient(circle at 40% 35%, #f4f5f7, #c9ccd1);
+    box-shadow: 0 4px 0 #8d9097, 0 6px 10px rgba(0,0,0,.35);
+    display: grid; place-items: center; color: #4a4f57;
+    transition: transform .06s, box-shadow .06s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent; outline: none;
+  }
+  .tg .press:focus-visible { outline: 3px solid #8ab4f8; outline-offset: 3px; }
+  .tg .press svg { width: 22px; height: 22px; }
+  .tg .press.down { transform: translateY(4px); box-shadow: 0 0 0 #8d9097, 0 2px 4px rgba(0,0,0,.35); }
+  .tg .label { background: rgba(255,255,255,.95); border: 1px solid #ccc; border-radius: 10px; padding: 3px 9px; text-align: center; line-height: 1.25; }
+  .tg .label b { font-size: 12px; display: block; }
+  .tg .label small { font-size: 10px; color: #666; }
+
   .blank { height: 100%; display: grid; place-items: center; color: #777; font-size: 14px; text-align: center; }
   .blank button { margin-top: 10px; font: inherit; padding: 5px 14px; border: 1px solid #aaa; border-radius: 4px; background: #fff; cursor: pointer; }
 
@@ -203,13 +242,8 @@
     <small>INFO 463 · Tab lock prototype</small>
     <p><b>Task:</b> You're in a meeting with your project partner. Look through your slides and notes without losing the meeting tab. When you're done, close the meeting.</p>
     <div id="tip">
-      <small>Keyboard shortcuts:</small>
-      <ul>
-        <li><kbd>&larr;</kbd> <kbd>&rarr;</kbd> switch tabs</li>
-        <li><kbd>Shift</kbd> + <kbd>L</kbd> lock / unlock the current tab</li>
-        <li><kbd>Shift</kbd> + <kbd>W</kbd> close the current tab</li>
-      </ul>
-      <p><small>You can also right-click a tab.</small></p>
+      <p id="tipDevice"><small>The device in the bottom-left corner is <b>TabGuard</b>, a small Bluetooth button connected to this computer. Press it to lock or unlock the tab you're on. Its light is on when that tab is locked.</small></p>
+      <p><small>You can also right-click a tab to lock it.</small></p>
     </div>
     <button id="startBtn">Start</button>
   </div>
@@ -237,10 +271,21 @@
   <pre id="logText"></pre>
 </div>
 
+<div class="tg" id="tg" hidden>
+  <div class="body" id="tgBody" title="Drag to move">
+    <span class="grip"></span>
+    <span class="led" id="tgLed"></span>
+    <button class="press" id="tgPress" aria-label="TabGuard button: lock or unlock the current tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </button>
+  </div>
+  <div class="label"><b>TabGuard</b><small>simulated Bluetooth button</small></div>
+</div>
+
 <div class="ctx" id="ctx" hidden>
-  <button id="ctxLock">Lock tab <kbd>Shift+L</kbd></button>
+  <button id="ctxLock">Lock tab</button>
   <hr>
-  <button id="ctxClose">Close tab <kbd>Shift+W</kbd></button>
+  <button id="ctxClose">Close tab</button>
 </div>
 
 <!-- page contents -->
@@ -317,6 +362,9 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const testing = params.has("test");
 if (params.has("nohint")) $("tip").hidden = true;  // for testing if people find the lock on their own
+// ?nodevice = baseline version with no TabGuard (right-click menu only)
+const useDevice = !params.has("nodevice");
+if (!useDevice) $("tipDevice").hidden = true;
 let startTime, visited, blockedCloses, lines, done;
 
 function log(msg) {
@@ -325,9 +373,9 @@ function log(msg) {
   if (!testing) return;
   $("logText").textContent = lines.join("\n");
   $("logText").scrollTop = 1e9;
-  const keys = lines.filter(l => l.endsWith("(key)")).length;
-  const clicks = lines.filter(l => l.endsWith("(mouse)") || l.endsWith("(menu)")).length;
-  $("stats").textContent = "keys " + keys + " · mouse " + clicks + " · blocked " + blockedCloses + (done ? " · done" : "");
+  const count = m => lines.filter(l => l.endsWith("(" + m + ")")).length;
+  $("stats").textContent = (useDevice ? "TabGuard " + count("tabguard") + " · " : "") + "menu " + count("menu") +
+    " · blocked " + blockedCloses + (done ? " · done" : "");
 }
 
 function checkDone() {
@@ -384,6 +432,8 @@ function render() {
     content.innerHTML = '<div class="blank"><div>No tabs open.<br><button onclick="showIntro()">Start over</button></div></div>';
   }
   content.appendChild(toast);
+  // TabGuard light shows whether the tab you're on is locked
+  $("tgLed").classList.toggle("on", !!activeTab && lockedTabs.has(activeTab));
 }
 
 function showToast(msg) {
@@ -398,7 +448,7 @@ function closeTab(id, how) {
   if (lockedTabs.has(id)) {
     blockedCloses++;
     log("tried to close " + id + " – blocked, tab is locked (" + how + ")");
-    showToast(TABS[id].title + " is locked. Press Shift+L to unlock it first.");
+    showToast(TABS[id].title + " is locked. " + (useDevice ? "Press TabGuard" : "Right-click the tab") + " to unlock it first.");
     const el = document.querySelector('.tab[data-id="' + id + '"]');
     if (el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
     return;
@@ -442,7 +492,7 @@ $("tabbar").addEventListener("click", e => {
   const id = tab.dataset.id;
   const act = e.target.closest("[data-act]");
   if (act && act.dataset.act === "close") { closeTab(id, "mouse"); return; }
-  if (act && act.dataset.act === "locked") { log("clicked lock icon on " + id); showToast("Locked. Press Shift+L or right-click to unlock."); return; }
+  if (act && act.dataset.act === "locked") { log("clicked lock icon on " + id); showToast("Locked. " + (useDevice ? "Press TabGuard or right-click" : "Right-click the tab") + " to unlock."); return; }
   switchTo(id, "mouse");
 });
 
@@ -460,7 +510,7 @@ $("tabbar").addEventListener("contextmenu", e => {
   menuFor = tab.dataset.id;
   log("opened menu on " + menuFor);
   const locked = lockedTabs.has(menuFor);
-  $("ctxLock").innerHTML = (locked ? "Unlock tab" : "Lock tab") + " <kbd>Shift+L</kbd>";
+  $("ctxLock").textContent = locked ? "Unlock tab" : "Lock tab";
   $("ctxClose").disabled = locked;
   const menu = $("ctx");
   menu.hidden = false;
@@ -485,15 +535,50 @@ document.addEventListener("keydown", e => {
     const step = e.key === "ArrowRight" ? 1 : -1;
     switchTo(openTabs[(i + step + openTabs.length) % openTabs.length], "key");
   } else if (e.shiftKey && e.code === "KeyL") {
+    // a real Bluetooth button could send this key, so treat it as a TabGuard press
     e.preventDefault();
     hideMenu();
-    toggleLock(activeTab, "key");
+    if (useDevice) pressTabGuard(); else toggleLock(activeTab, "key");
   } else if (e.shiftKey && e.code === "KeyW") {
     e.preventDefault();
     hideMenu();
     closeTab(activeTab, "key");
   }
 });
+
+// --- TabGuard device ---
+function pressTabGuard() {
+  const b = $("tgPress");
+  b.classList.add("down");
+  setTimeout(() => b.classList.remove("down"), 120);
+  if (!$("intro").hidden || !activeTab) return;
+  hideMenu();
+  toggleLock(activeTab, "tabguard");
+}
+$("tgPress").addEventListener("click", e => { e.stopPropagation(); pressTabGuard(); });
+
+// drag the device around by its body, so it never covers what you need
+(function makeDraggable() {
+  const tg = $("tg"), body = $("tgBody");
+  let sx, sy, ox, oy, dragging = false;
+  body.addEventListener("pointerdown", e => {
+    if (e.target.closest("#tgPress")) return;
+    const r = tg.getBoundingClientRect();
+    sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; dragging = true;
+    body.setPointerCapture(e.pointerId);
+    body.style.cursor = "grabbing";
+  });
+  body.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(innerWidth - tg.offsetWidth, ox + e.clientX - sx));
+    const y = Math.max(0, Math.min(innerHeight - tg.offsetHeight, oy + e.clientY - sy));
+    tg.style.left = x + "px"; tg.style.top = y + "px"; tg.style.bottom = "auto";
+  });
+  const stop = () => { dragging = false; body.style.cursor = ""; };
+  body.addEventListener("pointerup", stop);
+  body.addEventListener("pointercancel", stop);
+})();
+if (useDevice) $("tg").hidden = false;
 
 // start popup
 function showIntro() { $("intro").hidden = false; }
